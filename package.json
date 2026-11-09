@@ -1,0 +1,70 @@
+{
+  "name": "@cloro-dev/seo-provider",
+  "version": "0.1.0",
+  "description": "cloro provider for the seo package: live Google results, AI Overview sources and AI answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode.",
+  "author": "cloro",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/cloro-dev/seo-provider#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloro-dev/seo-provider.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cloro-dev/seo-provider/issues"
+  },
+  "keywords": [
+    "seo",
+    "cloro",
+    "serp",
+    "ai-overview",
+    "chatgpt",
+    "gemini",
+    "ai-mode",
+    "provider"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/index.d.ts",
+    "dist/index.js",
+    "dist/index.js.map"
+  ],
+  "seo": {
+    "apiVersion": 1,
+    "providers": [
+      "./dist/index.js"
+    ]
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsdown --config tsdown.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/index.test.js",
+    "package:check": "node scripts/package.test.mjs",
+    "prepack": "npm run build && npm test && npm run package:check"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "seo": "^0.17.3",
+    "tsdown": "^0.23.7",
+    "typescript": "^6.0.3",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "seo": ">=0.17.3"
+  }
+}

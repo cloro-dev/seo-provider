@@ -1,0 +1,41 @@
+# Publishes to npm when a merge to main changes `version` in package.json,
+# then tags vX.Y.Z. npm trusted publishing: no token is stored in this
+# repository. The first version is published by hand, because npm adds a
+# trusted publisher only to a package that exists.
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - id: v
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "@cloro-dev/seo-provider@$version" version > /dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.v.outputs.new == 'true'
+        run: npm ci --ignore-scripts
+      - if: steps.v.outputs.new == 'true'
+        run: npm publish --provenance --access public
+      - if: steps.v.outputs.new == 'true'
+        run: |
+          git tag "v${{ steps.v.outputs.version }}"
+          git push origin "v${{ steps.v.outputs.version }}"
