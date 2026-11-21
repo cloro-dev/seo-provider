@@ -5,7 +5,7 @@ Adds [cloro](https://cloro.dev/?utm_source=seo-provider&utm_medium=byok) to
 server. With your own cloro API key, `seo` gets:
 
 - live Google results for `seo research serp`,
-- Google organic results with the pages the AI Overview cites,
+- Google or Bing organic results with the pages the AI Overview cites,
 - answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode, with a check
   of whether each answer cites your site, mentions it, or neither.
 
@@ -50,15 +50,24 @@ local MCP server.
 
 ### serp
 
-Google organic results and the pages the AI Overview cites, for up to 5
-keywords.
+Google or Bing organic results and the pages the AI Overview cites, for up
+to 5 keywords.
 
 ```sh
 seo providers run cloro serp --params '{"keywords":["best crm for startups"],"country":"US"}'
+seo providers run cloro serp --params '{"keywords":["best crm for startups"],"engine":"bing"}'
 ```
 
-Each row has `keyword`, `type` (`organic` or `ai_overview`), `position`,
-`url`, `domain` and `title`.
+Each row has `keyword`, `engine` (`google` or `bing`), `type` (`organic` or
+`ai_overview`), `position`, `url`, `domain` and `title`.
+
+Set `engine` to `bing` for Bing Search (default `google`). The country sets
+the Bing market. Bing accepts all countries except CN, KR and RU, and a
+keyword of up to 3,500 characters after URL encoding. A longer keyword comes
+back in `errors` and is not sent.
+
+`seo research serp` asks providers for Google results only, so Bing results
+are available through the `serp` action.
 
 ### ai-answers
 
@@ -102,7 +111,7 @@ in the result is what cloro charged for the tasks in that result.
 | Request | Credits |
 | --- | --- |
 | Google search (`serp-snapshot`) | 3, plus 2 for each page after the first |
-| Google search with AI Overview (`serp`) | 5 |
+| Google or Bing search with AI Overview (`serp`) | 5 |
 | ChatGPT answer | 5 |
 | Google AI Mode, Gemini or Bing AI Mode answer | 4 |
 

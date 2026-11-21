@@ -20,8 +20,18 @@ const MICROS_PER_CREDIT = 800
 const MAX_KEYWORDS = 5
 const MAX_QUESTIONS = 5
 const MAX_SOURCES = 8
-// Bing AI Mode refuses a prompt longer than this after URL encoding.
+// Bing Search and Bing AI Mode refuse a query longer than this after URL
+// encoding.
 const BING_PROMPT_LIMIT = 3_500
+// Bing counts the query after URL encoding, with a space as "+".
+const bingPromptLength = (prompt: string) =>
+  encodeURIComponent(prompt.trim()).replace(/%20/gu, '+').length
+
+// cloro's search engines for the serp action, by the taskType of its async
+// API.
+const SEARCH_ENGINES = { google: 'GOOGLE', bing: 'BING' } as const
+type SearchEngineName = keyof typeof SEARCH_ENGINES
+const SEARCH_ENGINE_NAMES = Object.keys(SEARCH_ENGINES) as SearchEngineName[]
 
 // cloro's AI engines, by the taskType of its async API, with the credits
 // one answer costs.
@@ -509,14 +519,25 @@ function waitSeconds(value: SeoProviderJson | undefined, fallback: number) {
 // --- serp action -------------------------------------------------------------
 
 // The idempotency key carries the keyword, because cloro does not return a
-// task's payload: answers read back later still know their keyword.
-const serpKey = (code: string, day: string, keyword: string) =>
-  `seo-serp:${code}:${day}:${keyword}`
+// task's payload: answers read back later still know their keyword. A Bing
+// key has its own prefix, so a Google and a Bing search for the same keyword
+// are two tasks.
+const serpKey = (
+  engine: SearchEngineName,
+  code: string,
+  day: string,
+  keyword: string,
+) => `${engine === 'google' ? 'seo-serp' : `seo-serp-${engine}`}:${code}:${day}:${keyword}`
 const keywordOf = (key: string | null) =>
-  key?.startsWith('seo-serp:') ? key.split(':').slice(3).join(':') : null
+  key && /^seo-serp(-[a-z]+)?:/u.test(key)
+    ? key.split(':').slice(3).join(':')
+    : null
+const searchEngineOf = (type: string | null): SearchEngineName | null =>
+  SEARCH_ENGINE_NAMES.find((name) => SEARCH_ENGINES[name] === type) ?? null
 
 type SerpRow = {
   keyword: string | null
+  engine: SearchEngineName | null
   type: 'organic' | 'ai_overview'
   position: number | null
   url: string | null
@@ -524,7 +545,11 @@ type SerpRow = {
   title: string | null
 }
 
-function serpRows(keyword: string | null, result: Item): SerpRow[] {
+function serpRows(
+  keyword: string | null,
+  engine: SearchEngineName | null,
+  result: Item,
+): SerpRow[] {
   const organic = items(result.organicResults).map((item): SerpRow => {
     const url = safeUrl(item.link)
     // Without the page, the displayed link still shows the site.
@@ -533,6 +558,7 @@ function serpRows(keyword: string | null, result: Item): SerpRow[] {
     )
     return {
       keyword,
+      engine,
       type: 'organic',
       position: typeof item.position === 'number' ? item.position : null,
       url,
@@ -545,6 +571,7 @@ function serpRows(keyword: string | null, result: Item): SerpRow[] {
     const url = safeUrl(source.url)
     return {
       keyword,
+      engine,
       type: 'ai_overview',
       position: typeof source.position === 'number' ? source.position : null,
       url,
@@ -574,22 +601,43 @@ async function serpAction(
     if (!keywords.length) {
       throw failure('configuration', 'Give 1 to 5 keywords, or tasks to read.')
     }
+    const engine = params.engine ?? 'google'
+    if (typeof engine !== 'string' || !(engine in SEARCH_ENGINES)) {
+      throw failure(
+        'configuration',
+        `Unknown engine ${String(engine)}. Use ${SEARCH_ENGINE_NAMES.join(' or ')}.`,
+      )
+    }
+    const searchEngine = engine as SearchEngineName
     const code = country(params.country)
     const day = today(runtime)
-    const queued = await queue(
-      input,
-      runtime,
-      'serp:queue',
-      keywords.map((keyword) => ({
-        taskType: 'GOOGLE',
-        idempotencyKey: serpKey(code, day, keyword),
-        payload: { query: keyword, country: code, include: { aioverview: true } },
-      })),
-    )
+    const asks = keywords.filter((keyword) => {
+      if (searchEngine === 'bing' && bingPromptLength(keyword) > BING_PROMPT_LIMIT) {
+        errors.push({
+          keyword,
+          task: null,
+          error: `Bing takes up to ${BING_PROMPT_LIMIT} characters after URL encoding.`,
+        })
+        return false
+      }
+      return true
+    })
+    const queued = asks.length
+      ? await queue(
+          input,
+          runtime,
+          'serp:queue',
+          asks.map((keyword) => ({
+            taskType: SEARCH_ENGINES[searchEngine],
+            idempotencyKey: serpKey(searchEngine, code, day, keyword),
+            payload: { query: keyword, country: code, include: { aioverview: true } },
+          })),
+        )
+      : []
     ids = []
     queued.forEach((entry, index) => {
       if ('id' in entry) ids.push(entry.id)
-      else errors.push({ keyword: keywords[index] ?? null, task: null, error: entry.error })
+      else errors.push({ keyword: asks[index] ?? null, task: null, error: entry.error })
     })
     wait = waitSeconds(params.waitSeconds, 20)
   }
@@ -604,7 +652,7 @@ async function serpAction(
       errors.push({ keyword: keywordOf(task.key), task: task.id, error: task.error })
     } else {
       credits += task.credits
-      rows.push(...serpRows(keywordOf(task.key), task.response))
+      rows.push(...serpRows(keywordOf(task.key), searchEngineOf(task.type), task.response))
     }
   }
   return { rows, credits, pendingTasks, errors }
@@ -719,10 +767,6 @@ export function classify(
     )
   return { result: mentioned ? 'mentioned' : 'neither', citedUrl: null, sources, model }
 }
-
-// Bing AI Mode counts the prompt after URL encoding, with a space as "+".
-const bingPromptLength = (prompt: string) =>
-  encodeURIComponent(prompt.trim()).replace(/%20/gu, '+').length
 
 type AnswerRow = {
   question: string | null
@@ -888,11 +932,16 @@ const commonParams = {
 const serp: SeoProviderActionAdapter = {
   id: 'serp',
   description:
-    'Google organic results and the pages the AI Overview cites, for up to 5 keywords. Results not ready come back as pendingTasks: run again with tasks to read them.',
+    'Google or Bing organic results and the pages the AI Overview cites, for up to 5 keywords. Results not ready come back as pendingTasks: run again with tasks to read them.',
   inputSchema: {
     type: 'object',
     properties: {
       keywords: strings(MAX_KEYWORDS, 'Keywords to search, 1 to 5.'),
+      engine: {
+        type: 'string',
+        enum: SEARCH_ENGINE_NAMES,
+        description: 'The search engine: google or bing. Default google.',
+      },
       tasks: strings(50, 'Task ids from pendingTasks, to read instead of searching.'),
       ...commonParams,
     },
@@ -907,13 +956,14 @@ const serp: SeoProviderActionAdapter = {
           type: 'object',
           properties: {
             keyword: nullable('string'),
+            engine: nullable('string'),
             type: { type: 'string', enum: ['organic', 'ai_overview'] },
             position: nullable('number'),
             url: nullable('string'),
             domain: nullable('string'),
             title: nullable('string'),
           },
-          required: ['keyword', 'type', 'position', 'url', 'domain', 'title'],
+          required: ['keyword', 'engine', 'type', 'position', 'url', 'domain', 'title'],
         },
       },
       credits: { type: 'number' },
@@ -1019,7 +1069,7 @@ const activate: SeoProviderActivate = (host) => {
     id: 'cloro',
     displayName: 'cloro',
     description:
-      'Live Google results, AI Overview sources and answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode, from cloro.',
+      'Live Google and Bing results, AI Overview sources and answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode, from cloro.',
     kinds: ['search-results', 'ai-data'],
     connection: {
       fields: [
