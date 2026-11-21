@@ -266,6 +266,7 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
     rows: [
       {
         keyword: 'best crm',
+        engine: 'google',
         type: 'organic',
         position: 1,
         url: 'https://www.example.com/blog/best-crm/',
@@ -274,6 +275,7 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
       },
       {
         keyword: 'best crm',
+        engine: 'google',
         type: 'organic',
         position: 2,
         url: null,
@@ -282,6 +284,7 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
       },
       {
         keyword: 'best crm',
+        engine: 'google',
         type: 'ai_overview',
         position: 1,
         url: 'https://blog.example.net/crm',
@@ -295,6 +298,81 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
       { keyword: 'x', task: null, error: 'cloro: VALIDATION_ERROR, Invalid task at index 1' },
     ],
   })
+})
+
+test('serp with engine bing queues Bing tasks and refuses a long query', async () => {
+  const serp = await action('serp')
+  const run = runtime([
+    () => ({
+      success: true,
+      results: [{ success: true, index: 0, task: { id: id(1), status: 'QUEUED' } }],
+    }),
+    () => ({
+      task: {
+        id: id(1),
+        taskType: 'BING',
+        status: 'COMPLETED',
+        createdAt: '2026-11-21T09:59:00.000Z',
+        idempotencyKey: 'seo-serp-bing:GB:2026-11-09:season a wok',
+      },
+      credits: { creditsToCharge: 5, creditsCharged: 5 },
+      response: {
+        organicResults: [
+          {
+            position: 1,
+            title: 'How to Season a Wok',
+            link: 'https://www.example.com/season-a-wok/',
+            displayedLink: 'https://www.example.com › season-a-wok',
+            snippet: 'Heat the wok, then coat it with a thin layer of oil.',
+            page: 1,
+            date: 'Apr 5, 2024',
+          },
+        ],
+        aioverview: {
+          text: 'Seasoning a wok means heating a thin layer of oil until it polymerizes.',
+          sources: [{ label: 'Wok guide', url: 'https://blog.example.net/wok', position: 1 }],
+        },
+      },
+    }),
+  ])
+  const long = '中'.repeat(600)
+  const out = (await serp.run(
+    {
+      ...connection,
+      params: { keywords: ['season a wok', long], engine: 'bing', country: 'gb', waitSeconds: 0 },
+    },
+    run,
+  )) as { rows: Record<string, unknown>[]; errors: unknown[] }
+  output(serp, out)
+  assert.deepEqual(JSON.parse(run.requests[0]?.body ?? ''), [
+    {
+      taskType: 'BING',
+      idempotencyKey: 'seo-serp-bing:GB:2026-11-09:season a wok',
+      payload: { query: 'season a wok', country: 'GB', include: { aioverview: true } },
+    },
+  ])
+  assert.deepEqual(
+    out.rows.map((row) => [row.keyword, row.engine, row.type, row.domain]),
+    [
+      ['season a wok', 'bing', 'organic', 'www.example.com'],
+      ['season a wok', 'bing', 'ai_overview', 'blog.example.net'],
+    ],
+  )
+  assert.deepEqual(out.errors, [
+    {
+      keyword: long,
+      task: null,
+      error: 'Bing takes up to 3500 characters after URL encoding.',
+    },
+  ])
+})
+
+test('serp refuses an unknown engine', async () => {
+  const serp = await action('serp')
+  await assert.rejects(
+    serp.run({ ...connection, params: { keywords: ['x'], engine: 'yahoo' } }, runtime([])),
+    /Unknown engine yahoo/u,
+  )
 })
 
 test('ai-answers queues every engine and returns what is not ready as pending', async () => {

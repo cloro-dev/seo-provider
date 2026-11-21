@@ -1,7 +1,7 @@
 {
   "name": "@cloro-dev/seo-provider",
-  "version": "0.1.1",
-  "description": "cloro provider for the seo package: live Google results, AI Overview sources and AI answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode.",
+  "version": "0.2.0",
+  "description": "cloro provider for the seo package: live Google and Bing results, AI Overview sources and AI answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode.",
   "author": "cloro",
   "type": "module",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "seo",
     "cloro",
     "serp",
+    "bing",
     "ai-overview",
     "chatgpt",
     "gemini",
