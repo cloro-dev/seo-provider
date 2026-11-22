@@ -59,7 +59,8 @@ seo providers run cloro serp --params '{"keywords":["best crm for startups"],"en
 ```
 
 Each row has `keyword`, `engine` (`google` or `bing`), `type` (`organic` or
-`ai_overview`), `position`, `url`, `domain` and `title`.
+`ai_overview`), `position`, `url`, `domain` and `title`. The action does not
+return the Google or Bing ads.
 
 Set `engine` to `bing` for Bing Search (default `google`). The country sets
 the Bing market. Bing accepts all countries except CN, KR and RU, and a
