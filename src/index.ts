@@ -582,6 +582,43 @@ function serpRows(
   return [...organic, ...cited]
 }
 
+type AdRow = {
+  keyword: string | null
+  engine: SearchEngineName | null
+  type: string | null
+  blockPosition: string | null
+  position: number | null
+  url: string | null
+  domain: string | null
+  title: string | null
+  description: string | null
+  price: string | null
+  store: string | null
+}
+
+// Ads have their own list, so rows keeps the organic results and the AI
+// Overview sources only. The domain is the advertiser's, because a Google
+// shopping card links to google.com.
+function adRows(
+  keyword: string | null,
+  engine: SearchEngineName | null,
+  result: Item,
+): AdRow[] {
+  return items(result.ads).map((ad): AdRow => ({
+    keyword,
+    engine,
+    type: text(ad.type),
+    blockPosition: text(ad.blockPosition),
+    position: typeof ad.position === 'number' ? ad.position : null,
+    url: safeUrl(ad.url),
+    domain: text(ad.domain),
+    title: text(ad.title),
+    description: text(ad.description),
+    price: text(((ad.price ?? {}) as Item).raw),
+    store: text(ad.store),
+  }))
+}
+
 async function serpAction(
   input: SeoProviderConnection & {
     params: Readonly<Record<string, SeoProviderJson>>
@@ -644,6 +681,7 @@ async function serpAction(
   if (wait && ids.length) await sleep(wait * 1_000)
   const read = await readTasks(input, runtime, 'serp:read', ids)
   const rows: SerpRow[] = []
+  const ads: AdRow[] = []
   const pendingTasks: string[] = []
   let credits = 0
   for (const task of read) {
@@ -653,9 +691,10 @@ async function serpAction(
     } else {
       credits += task.credits
       rows.push(...serpRows(keywordOf(task.key), searchEngineOf(task.type), task.response))
+      ads.push(...adRows(keywordOf(task.key), searchEngineOf(task.type), task.response))
     }
   }
-  return { rows, credits, pendingTasks, errors }
+  return { rows, ads, credits, pendingTasks, errors }
 }
 
 // --- ai-answers action -------------------------------------------------------
@@ -932,7 +971,7 @@ const commonParams = {
 const serp: SeoProviderActionAdapter = {
   id: 'serp',
   description:
-    'Google or Bing organic results and the pages the AI Overview cites, for up to 5 keywords. Results not ready come back as pendingTasks: run again with tasks to read them.',
+    'Google or Bing organic results, ads and the pages the AI Overview cites, for up to 5 keywords. Results not ready come back as pendingTasks: run again with tasks to read them.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -966,6 +1005,38 @@ const serp: SeoProviderActionAdapter = {
           required: ['keyword', 'engine', 'type', 'position', 'url', 'domain', 'title'],
         },
       },
+      ads: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            keyword: nullable('string'),
+            engine: nullable('string'),
+            type: nullable('string'),
+            blockPosition: nullable('string'),
+            position: nullable('number'),
+            url: nullable('string'),
+            domain: nullable('string'),
+            title: nullable('string'),
+            description: nullable('string'),
+            price: nullable('string'),
+            store: nullable('string'),
+          },
+          required: [
+            'keyword',
+            'engine',
+            'type',
+            'blockPosition',
+            'position',
+            'url',
+            'domain',
+            'title',
+            'description',
+            'price',
+            'store',
+          ],
+        },
+      },
       credits: { type: 'number' },
       pendingTasks: { type: 'array', items: { type: 'string' } },
       errors: {
@@ -981,7 +1052,7 @@ const serp: SeoProviderActionAdapter = {
         },
       },
     },
-    required: ['rows', 'credits', 'pendingTasks', 'errors'],
+    required: ['rows', 'ads', 'credits', 'pendingTasks', 'errors'],
   },
   run: serpAction,
 }

@@ -241,6 +241,30 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
             { label: 'CRM picks', url: 'https://blog.example.net/crm', position: 1 },
           ],
         },
+        ads: [
+          {
+            position: 1,
+            blockPosition: 'top',
+            type: 'RESULT',
+            title: 'CRM sale',
+            url: 'https://shop.example.com/crm',
+            page: 1,
+            domain: 'shop.example.com',
+            description: 'A CRM for small teams.',
+          },
+          {
+            position: 1,
+            blockPosition: 'rhs',
+            type: 'SHOPPING_CARD',
+            title: 'CRM book',
+            url: 'https://www.google.com/aclk?sa=L',
+            page: 1,
+            category: 'Sponsored products',
+            price: { value: 29, currency: '$', raw: '$29.00' },
+            store: 'Shop',
+          },
+          {},
+        ],
       },
     }),
   ])
@@ -292,6 +316,47 @@ test('serp queues one batch, waits, and reads organic and AI Overview rows', asy
         title: 'CRM picks',
       },
     ],
+    ads: [
+      {
+        keyword: 'best crm',
+        engine: 'google',
+        type: 'RESULT',
+        blockPosition: 'top',
+        position: 1,
+        url: 'https://shop.example.com/crm',
+        domain: 'shop.example.com',
+        title: 'CRM sale',
+        description: 'A CRM for small teams.',
+        price: null,
+        store: null,
+      },
+      {
+        keyword: 'best crm',
+        engine: 'google',
+        type: 'SHOPPING_CARD',
+        blockPosition: 'rhs',
+        position: 1,
+        url: 'https://www.google.com/aclk?sa=L',
+        domain: null,
+        title: 'CRM book',
+        description: null,
+        price: '$29.00',
+        store: 'Shop',
+      },
+      {
+        keyword: 'best crm',
+        engine: 'google',
+        type: null,
+        blockPosition: null,
+        position: null,
+        url: null,
+        domain: null,
+        title: null,
+        description: null,
+        price: null,
+        store: null,
+      },
+    ],
     credits: 5,
     pendingTasks: [],
     errors: [
@@ -332,6 +397,18 @@ test('serp with engine bing queues Bing tasks and refuses a long query', async (
           text: 'Seasoning a wok means heating a thin layer of oil until it polymerizes.',
           sources: [{ label: 'Wok guide', url: 'https://blog.example.net/wok', position: 1 }],
         },
+        ads: [
+          {
+            position: 1,
+            blockPosition: 'rhs',
+            type: 'SHOPPING_CARD',
+            title: '14 in Wok',
+            url: 'https://shop.example.com/wok-14',
+            page: 1,
+            price: { value: 29, currency: '$', raw: '$29.00' },
+            store: 'Shop',
+          },
+        ],
       },
     }),
   ])
@@ -342,8 +419,16 @@ test('serp with engine bing queues Bing tasks and refuses a long query', async (
       params: { keywords: ['season a wok', long], engine: 'bing', country: 'gb', waitSeconds: 0 },
     },
     run,
-  )) as { rows: Record<string, unknown>[]; errors: unknown[] }
+  )) as {
+    rows: Record<string, unknown>[]
+    ads: Record<string, unknown>[]
+    errors: unknown[]
+  }
   output(serp, out)
+  assert.deepEqual(
+    out.ads.map((ad) => [ad.keyword, ad.engine, ad.type, ad.price, ad.store]),
+    [['season a wok', 'bing', 'SHOPPING_CARD', '$29.00', 'Shop']],
+  )
   assert.deepEqual(JSON.parse(run.requests[0]?.body ?? ''), [
     {
       taskType: 'BING',
@@ -365,6 +450,19 @@ test('serp with engine bing queues Bing tasks and refuses a long query', async (
       error: 'Bing takes up to 3500 characters after URL encoding.',
     },
   ])
+})
+
+test('serp returns no ads when the page has none', async () => {
+  const serp = await action('serp')
+  const run = runtime([
+    () => ({
+      task: { id: id(1), taskType: 'BING', status: 'COMPLETED' },
+      response: { organicResults: [] },
+    }),
+  ])
+  const out = await serp.run({ ...connection, params: { tasks: [id(1)] } }, run)
+  output(serp, out)
+  assert.deepEqual(out, { rows: [], ads: [], credits: 0, pendingTasks: [], errors: [] })
 })
 
 test('serp refuses an unknown engine', async () => {
