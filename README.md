@@ -5,7 +5,8 @@ Adds [cloro](https://cloro.dev/?utm_source=seo-provider&utm_medium=byok) to
 server. With your own cloro API key, `seo` gets:
 
 - live Google results for `seo research serp`,
-- Google or Bing organic results with the pages the AI Overview cites,
+- Google or Bing organic results with the ads and the pages the AI Overview
+  cites,
 - answers from ChatGPT, Google AI Mode, Gemini and Bing AI Mode, with a check
   of whether each answer cites your site, mentions it, or neither.
 
@@ -50,8 +51,8 @@ local MCP server.
 
 ### serp
 
-Google or Bing organic results and the pages the AI Overview cites, for up
-to 5 keywords.
+Google or Bing organic results, the ads and the pages the AI Overview cites,
+for up to 5 keywords.
 
 ```sh
 seo providers run cloro serp --params '{"keywords":["best crm for startups"],"country":"US"}'
@@ -59,8 +60,13 @@ seo providers run cloro serp --params '{"keywords":["best crm for startups"],"en
 ```
 
 Each row has `keyword`, `engine` (`google` or `bing`), `type` (`organic` or
-`ai_overview`), `position`, `url`, `domain` and `title`. The action does not
-return the Google or Bing ads.
+`ai_overview`), `position`, `url`, `domain` and `title`.
+
+The ads on the page are in `ads`. Each ad has `keyword`, `engine`, `type`
+(`RESULT` for a text ad, `SHOPPING_CARD` for a card), `blockPosition` (`top`,
+`middle`, `bottom` or `rhs`), `position`, `url`, `domain`, `title`,
+`description`, `price` and `store`. A field that the page does not show is
+`null`. The ads cost no extra credits.
 
 Set `engine` to `bing` for Bing Search (default `google`). The country sets
 the Bing market. Bing accepts all countries except CN, KR and RU, and a
