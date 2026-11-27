@@ -753,11 +753,33 @@ function isSource(url: string): boolean {
 // [example.com](url) and bare links go, so a citation is never also counted
 // as a mention by name.
 function prose(markdown: string): string {
-  return markdown
-    .replace(/\[([^\]]*)\]\(https?:\/\/[^)]*\)/gu, (_, label: string) =>
-      /^\s*(\d+|[\w-]+(\.[\w-]+)+)\s*$/u.test(label) ? ' ' : label,
-    )
-    .replace(/https?:\/\/\S+/gu, ' ')
+  return withoutLinkMarkup(markdown).replace(/https?:\/\/\S+/gu, ' ')
+}
+
+// The same result as
+//   markdown.replace(/\[([^\]]*)\]\(https?:\/\/[^)]*\)/gu, label or ' ')
+// with each character read a fixed number of times. That pattern starts again
+// at each "[" and reads to the next "]" and ")", so a crafted answer of a few
+// hundred KB took seconds (CodeQL js/polynomial-redos).
+function withoutLinkMarkup(markdown: string): string {
+  let result = ''
+  let copiedTo = 0
+  let closeBracket = -1
+  let closeParen = -1
+  for (let start = markdown.indexOf('['); start !== -1; start = markdown.indexOf('[', start + 1)) {
+    if (closeBracket <= start) closeBracket = markdown.indexOf(']', start + 1)
+    if (closeBracket === -1) break
+    const url = closeBracket + 1
+    if (!markdown.startsWith('(http://', url) && !markdown.startsWith('(https://', url)) continue
+    if (closeParen <= url) closeParen = markdown.indexOf(')', url)
+    if (closeParen === -1) break
+    const label = markdown.slice(start + 1, closeBracket)
+    result += markdown.slice(copiedTo, start)
+    result += /^\s*(\d+|[\w-]+(\.[\w-]+)+)\s*$/u.test(label) ? ' ' : label
+    copiedTo = closeParen + 1
+    start = closeParen
+  }
+  return result + markdown.slice(copiedTo)
 }
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')

@@ -8,7 +8,7 @@ import type {
   SeoProviderRuntime,
 } from 'seo/provider-sdk'
 import { z } from 'zod'
-import activate from './index.js'
+import activate, { classify } from './index.js'
 
 // Payloads are trimmed from live cloro responses (2026-11), with the
 // domains changed to example ones.
@@ -635,4 +635,25 @@ test('ai-answers refuses a Bing prompt over the limit before it queues', async (
   )) as { rows: Record<string, unknown>[] }
   assert.equal(run.requests.length, 0)
   assert.deepEqual(out.rows.map((row) => [row.engine, row.result]), [['bing_ai_mode', 'unavailable']])
+})
+
+// Answers made to slow down the citation pattern of prose() (CodeQL
+// js/polynomial-redos). Before the fix, 440 KB of "[" took 62 s.
+test('a crafted answer of 300 KB is classified in less than one second', () => {
+  for (const unit of ['[', '[\\', '[a](http://', '](https://', '[example.com](https://']) {
+    const text = unit.repeat(Math.ceil(300_000 / unit.length))
+    const start = performance.now()
+    classify({ text, sources: [] }, { domain: 'example.org', names: ['Example'] })
+    const ms = performance.now() - start
+    assert.ok(ms < 1000, `${JSON.stringify(unit)} took ${Math.round(ms)} ms`)
+  }
+})
+
+test('prose() keeps the labels of named links and removes citation pills', () => {
+  const answer = {
+    text: 'See [Example Tools](https://tools.example.net/x) and [1](https://a.example.com) or [example.com](https://example.com/p).',
+    sources: [],
+  }
+  assert.equal(classify(answer, { domain: 'acme.org', names: ['Example Tools'] }).result, 'mentioned')
+  assert.equal(classify(answer, { domain: 'acme.org', names: ['example.com'] }).result, 'neither')
 })
